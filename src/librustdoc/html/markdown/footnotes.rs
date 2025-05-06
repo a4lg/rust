@@ -130,14 +130,13 @@ fn render_footnotes_defs(mut footnotes: Vec<FootnoteDef<'_>>) -> String {
             is_paragraph = true;
         }
         html::push_html(&mut ret, content.into_iter());
-        if num_refs <= 1 {
-            write!(ret, "&nbsp;<a href=\"#fnref{id}\">↩</a>").unwrap();
-        } else {
-            // There are multiple references to single footnote. Make the first
-            // back link a single "a" element to make touch region larger.
-            write!(ret, "&nbsp;<a href=\"#fnref{id}\">↩&nbsp;<sup>1</sup></a>").unwrap();
+        write!(ret, "&nbsp;<a href=\"#fnref{id}\">↩</a>").unwrap();
+        if num_refs >= 2 {
+            // Emit return symbol each time but along with superscript numbers
+            // for the second reference and later.
             for refid in 2..=num_refs {
-                write!(ret, "&nbsp;<sup><a href=\"#fnref{id}-{refid}\">{refid}</a></sup>").unwrap();
+                write!(ret, "&nbsp;<a href=\"#fnref{id}-{refid}\">↩<sup>{refid}</sup></a>")
+                    .unwrap();
             }
         }
         if is_paragraph {
