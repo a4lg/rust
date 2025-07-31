@@ -123,6 +123,46 @@ impl PartialEq for Compiler {
     }
 }
 
+/// Represents a codegen backend.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+pub enum CodegenBackendKind {
+    #[default]
+    Llvm,
+    Cranelift,
+    Gcc,
+    Custom(String),
+}
+
+impl CodegenBackendKind {
+    /// Name of the codegen backend, as identified in the `compiler` directory
+    /// (`rustc_codegen_<name>`).
+    pub fn name(&self) -> &str {
+        match self {
+            CodegenBackendKind::Llvm => "llvm",
+            CodegenBackendKind::Cranelift => "cranelift",
+            CodegenBackendKind::Gcc => "gcc",
+            CodegenBackendKind::Custom(name) => name,
+        }
+    }
+
+    /// Name of the codegen backend's crate, e.g. `rustc_codegen_cranelift`.
+    pub fn crate_name(&self) -> String {
+        format!("rustc_codegen_{}", self.name())
+    }
+
+    pub fn is_llvm(&self) -> bool {
+        matches!(self, Self::Llvm)
+    }
+
+    pub fn is_cranelift(&self) -> bool {
+        matches!(self, Self::Cranelift)
+    }
+
+    pub fn is_gcc(&self) -> bool {
+        matches!(self, Self::Gcc)
+    }
+}
+
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum DocTests {
     /// Run normal tests and doc tests (default).
@@ -1329,23 +1369,33 @@ impl Build {
         }
     }
 
-    /// Returns the "musl root" for this `target`, if defined
+    /// Returns the "musl root" for this `target`, if defined.
+    ///
+    /// If this is a native target (host is also musl) and no musl-root is given,
+    /// it falls back to the system toolchain in /usr.
     fn musl_root(&self, target: TargetSelection) -> Option<&Path> {
-        self.config
+        let configured_root = self
+            .config
             .target_config
             .get(&target)
             .and_then(|t| t.musl_root.as_ref())
             .or(self.config.musl_root.as_ref())
-            .map(|p| &**p)
+            .map(|p| &**p);
+
+        if self.config.is_host_target(target) && configured_root.is_none() {
+            Some(Path::new("/usr"))
+        } else {
+            configured_root
+        }
     }
 
     /// Returns the "musl libdir" for this `target`.
     fn musl_libdir(&self, target: TargetSelection) -> Option<PathBuf> {
-        let t = self.config.target_config.get(&target)?;
-        if let libdir @ Some(_) = &t.musl_libdir {
-            return libdir.clone();
-        }
-        self.musl_root(target).map(|root| root.join("lib"))
+        self.config
+            .target_config
+            .get(&target)
+            .and_then(|t| t.musl_libdir.clone())
+            .or_else(|| self.musl_root(target).map(|root| root.join("lib")))
     }
 
     /// Returns the `lib` directory for the WASI target specified, if
